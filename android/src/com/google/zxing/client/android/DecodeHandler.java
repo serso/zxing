@@ -23,6 +23,7 @@ import com.google.zxing.MultiFormatReader;
 import com.google.zxing.PlanarYUVLuminanceSource;
 import com.google.zxing.ReaderException;
 import com.google.zxing.Result;
+import com.google.zxing.client.android.camera.CameraManager;
 import com.google.zxing.common.HybridBinarizer;
 
 import android.os.Bundle;
@@ -38,14 +39,16 @@ final class DecodeHandler extends Handler {
 
   private static final String TAG = DecodeHandler.class.getSimpleName();
 
-  private final CaptureActivity activity;
+  private final CameraManager cameraManager;
+  private final Supplier<Handler> callbackSupplier;
   private final MultiFormatReader multiFormatReader;
   private boolean running = true;
 
-  DecodeHandler(CaptureActivity activity, Map<DecodeHintType,Object> hints) {
+  DecodeHandler(CameraManager cameraManager, Supplier<Handler> callbackSupplier, Map<DecodeHintType, Object> hints) {
+    this.cameraManager = cameraManager;
+    this.callbackSupplier = callbackSupplier;
     multiFormatReader = new MultiFormatReader();
     multiFormatReader.setHints(hints);
-    this.activity = activity;
   }
 
   @Override
@@ -75,7 +78,7 @@ final class DecodeHandler extends Handler {
   private void decode(byte[] data, int width, int height) {
     long start = System.currentTimeMillis();
     Result rawResult = null;
-    PlanarYUVLuminanceSource source = activity.getCameraManager().buildLuminanceSource(data, width, height);
+    PlanarYUVLuminanceSource source = cameraManager.buildLuminanceSource(data, width, height);
     if (source != null) {
       BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(source));
       try {
@@ -87,7 +90,7 @@ final class DecodeHandler extends Handler {
       }
     }
 
-    Handler handler = activity.getHandler();
+    Handler handler = callbackSupplier.get();
     if (rawResult != null) {
       // Don't log the barcode contents for security.
       long end = System.currentTimeMillis();
@@ -95,7 +98,7 @@ final class DecodeHandler extends Handler {
       if (handler != null) {
         Message message = Message.obtain(handler, R.id.decode_succeeded, rawResult);
         Bundle bundle = new Bundle();
-        bundleThumbnail(source, bundle);        
+        bundleThumbnail(source, bundle);
         message.setData(bundle);
         message.sendToTarget();
       }

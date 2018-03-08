@@ -17,9 +17,11 @@
 package com.google.zxing.client.android;
 
 import android.content.ActivityNotFoundException;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.BitmapFactory;
+import android.preference.PreferenceManager;
 import android.provider.Browser;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.DecodeHintType;
@@ -36,6 +38,7 @@ import android.os.Message;
 import android.util.Log;
 
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.Map;
 
 /**
@@ -58,14 +61,20 @@ public final class CaptureActivityHandler extends Handler {
     DONE
   }
 
-  CaptureActivityHandler(CaptureActivity activity,
+  CaptureActivityHandler(final CaptureActivity activity,
                          Collection<BarcodeFormat> decodeFormats,
                          Map<DecodeHintType,?> baseHints,
                          String characterSet,
                          CameraManager cameraManager) {
     this.activity = activity;
-    decodeThread = new DecodeThread(activity, decodeFormats, baseHints, characterSet,
-        new ViewfinderResultPointCallback(activity.getViewfinderView()));
+    decodeFormats = chooseDecodeFormats(decodeFormats);
+    decodeThread = new DecodeThread(cameraManager, new Supplier<Handler>() {
+      @Override
+      public Handler get() {
+        return activity.getHandler();
+      }
+    }, decodeFormats, baseHints, characterSet,
+            new ViewfinderResultPointCallback(activity.getViewfinderView()));
     decodeThread.start();
     state = State.SUCCESS;
 
@@ -73,6 +82,33 @@ public final class CaptureActivityHandler extends Handler {
     this.cameraManager = cameraManager;
     cameraManager.startPreview();
     restartPreviewAndDecode();
+  }
+
+  private Collection<BarcodeFormat> chooseDecodeFormats(Collection<BarcodeFormat> decodeFormats) {
+    // The prefs can't change while the thread is running, so pick them up once here.
+    if (decodeFormats == null || decodeFormats.isEmpty()) {
+      SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
+      decodeFormats = EnumSet.noneOf(BarcodeFormat.class);
+      if (prefs.getBoolean(PreferencesActivity.KEY_DECODE_1D_PRODUCT, true)) {
+        decodeFormats.addAll(DecodeFormatManager.PRODUCT_FORMATS);
+      }
+      if (prefs.getBoolean(PreferencesActivity.KEY_DECODE_1D_INDUSTRIAL, true)) {
+        decodeFormats.addAll(DecodeFormatManager.INDUSTRIAL_FORMATS);
+      }
+      if (prefs.getBoolean(PreferencesActivity.KEY_DECODE_QR, true)) {
+        decodeFormats.addAll(DecodeFormatManager.QR_CODE_FORMATS);
+      }
+      if (prefs.getBoolean(PreferencesActivity.KEY_DECODE_DATA_MATRIX, true)) {
+        decodeFormats.addAll(DecodeFormatManager.DATA_MATRIX_FORMATS);
+      }
+      if (prefs.getBoolean(PreferencesActivity.KEY_DECODE_AZTEC, false)) {
+        decodeFormats.addAll(DecodeFormatManager.AZTEC_FORMATS);
+      }
+      if (prefs.getBoolean(PreferencesActivity.KEY_DECODE_PDF417, false)) {
+        decodeFormats.addAll(DecodeFormatManager.PDF417_FORMATS);
+      }
+    }
+    return decodeFormats;
   }
 
   @Override
