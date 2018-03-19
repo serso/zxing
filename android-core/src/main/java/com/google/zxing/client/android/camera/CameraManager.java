@@ -276,6 +276,10 @@ public final class CameraManager {
         // Called early, before init even finished
         return null;
       }
+      final int rotations = configManager.getCWNeededRotation() / 90;
+      if (rotations % 2 != 0) {
+        cameraResolution = new Point(cameraResolution.y, cameraResolution.x);
+      }
       rect.left = rect.left * cameraResolution.x / screenResolution.x;
       rect.right = rect.right * cameraResolution.x / screenResolution.x;
       rect.top = rect.top * cameraResolution.y / screenResolution.y;
@@ -333,13 +337,38 @@ public final class CameraManager {
    * @return A PlanarYUVLuminanceSource instance.
    */
   public PlanarYUVLuminanceSource buildLuminanceSource(byte[] data, int width, int height) {
-    Rect rect = getFramingRectInPreview();
+    final Rect rect = getFramingRectInPreview();
     if (rect == null) {
       return null;
     }
+
+    final int rotations = configManager.getCWNeededRotation() / 90;
+    byte[] out = new byte[data.length];
+    for (int i = 0; i < rotations; i++) {
+      rotate(data, width, height, out);
+
+      // reuse the same out array
+      final byte[] tmpArray = data;
+      data = out;
+      out = tmpArray;
+
+      // swap dimensions
+      final int tmp = width;
+      width = height;
+      height = tmp;
+    }
+
     // Go ahead and assume it's YUV rather than die.
     return new PlanarYUVLuminanceSource(data, width, height, rect.left, rect.top,
                                         rect.width(), rect.height(), false);
+  }
+
+  private static void rotate(byte[] data, int width, int height, byte[] out) {
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        out[x * height + height - y - 1] = data[x + y * width];
+      }
+    }
   }
 
 }
